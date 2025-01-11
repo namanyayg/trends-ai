@@ -1,5 +1,7 @@
 import { Suspense } from 'react';
 
+export const dynamic = 'force-dynamic';
+
 // Types for our data
 type Link = {
   title: string;
@@ -123,7 +125,7 @@ const FutureTrendsList = ({ trends }: { trends: string[] }) => (
 
 // Data fetching function
 async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> {
-  const res = await fetch('http://localhost:3000/api/trends', { next: { revalidate: 3600 } });
+  const res = await fetch('/api/trends', { next: { revalidate: 3600 } });
   if (!res.ok) throw new Error('Failed to fetch trends');
   return res.json();
 }
