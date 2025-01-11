@@ -125,7 +125,14 @@ const FutureTrendsList = ({ trends }: { trends: string[] }) => (
 
 // Data fetching function
 async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> {
-  const res = await fetch('https://trends.nmn.gl/api/trends', { next: { revalidate: 3600 } });
+  // Use absolute URL to avoid URL parsing issues
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'https://trends.nmn.gl';
+  const res = await fetch(`${baseUrl}/api/trends`, { 
+    next: { revalidate: 3600 },
+    headers: {
+      'Accept': 'application/json'
+    }
+  });
   if (!res.ok) throw new Error('Failed to fetch trends');
   return res.json();
 }
