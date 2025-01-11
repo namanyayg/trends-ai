@@ -32,9 +32,9 @@ const SYSTEM_PROMPT = `You are a smart AI doing trend analysis based on all give
 
 Ensure that the Trend hooks are written in Twitter style and are emotional, attention grabbing, and clickbaity enough like a real Twitter post.
 
-Same with Narrative, give a highly descriptive and informative idea of the narrative that's happening that it could be useful to create Twitter threads from
+Same with Narratives, give array of highly descriptive and informative idea of the narrative that's happening that it could be useful to create Twitter threads from
 
-Ensure that "trend sources" match with the titles used to create this trend, so we can give clear attribution for how where each trend comes from. 
+Ensure that "trend sources" match with the links "titles" used to create this trend, so we can give clear attribution for how where each trend comes from. 
 
 Give an integer trend_viral_score out of 10 on the viral chances of this.
 
