@@ -125,7 +125,7 @@ const FutureTrendsList = ({ trends }: { trends: string[] }) => (
 
 // Data fetching function
 async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> {
-  const res = await fetch('/api/trends', { next: { revalidate: 3600 } });
+  const res = await fetch('https://trends.nmn.gl/api/trends', { next: { revalidate: 3600 } });
   if (!res.ok) throw new Error('Failed to fetch trends');
   return res.json();
 }
