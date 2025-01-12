@@ -218,11 +218,8 @@ const CategoryTabs = ({
 
 // Main client component
 export function TrendsClient({ trendsData }: { trendsData: TrendsData[] }) {
-  if (!trendsData || trendsData.length === 0) {
-    return <div>No data available</div>;
-  }
   // Sort categories to ensure Technology comes first
-  const sortedCategories = trendsData
+  const sortedCategories = trendsData.length > 0 ? trendsData
     .sort((a, b) => {
       if (a.category === "Technology") return -1;
       if (b.category === "Technology") return 1;
@@ -231,9 +228,14 @@ export function TrendsClient({ trendsData }: { trendsData: TrendsData[] }) {
     .map(data => ({
       name: data.category,
       data: data
-    }));
+    })) : [];
 
   const [activeCategory, setActiveCategory] = useState(sortedCategories[0]?.name || '');
+
+  if (!trendsData || trendsData.length === 0) {
+    return <div>No data available</div>;
+  }
+
   const activeData = sortedCategories.find(cat => cat.name === activeCategory)?.data;
   const activeCategoryConfig = CATEGORY_CONFIG[activeCategory as keyof typeof CATEGORY_CONFIG];
 
