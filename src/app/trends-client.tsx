@@ -218,6 +218,9 @@ const CategoryTabs = ({
 
 // Main client component
 export function TrendsClient({ trendsData }: { trendsData: TrendsData[] }) {
+  if (!trendsData || trendsData.length === 0) {
+    return <div>No data available</div>;
+  }
   // Sort categories to ensure Technology comes first
   const sortedCategories = trendsData
     .sort((a, b) => {
