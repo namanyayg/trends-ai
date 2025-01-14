@@ -124,7 +124,7 @@ async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> 
     return res.json();
   } else {
     // In production, call the handler directly
-    const response = await GET(new Request('http://localhost:3000/api/trends'));
+    const response = await GET(new Request('/api/trends'));
     const data = await response.json();
     return data;
   }
@@ -134,6 +134,10 @@ async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> 
 async function TrendsDisplay() {
   const { data } = await getTrendsData();
   const lastUpdated = new Date(data.timestamp).toLocaleString();
+
+  if (!data || !data.results) {
+    return <div>Error fetching trends</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-8">
