@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { GET } from '../api/trends/route';  // Import the API route handler
 
 // Types for our data
 type Link = {
@@ -115,10 +116,18 @@ const FutureTrendsList = ({ trends }: { trends: string[] }) => (
 
 // Data fetching function
 async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-  const res = await fetch(`${apiUrl}/api/trends`);
-  if (!res.ok) throw new Error('Failed to fetch trends');
-  return res.json();
+  if (process.env.NODE_ENV === 'development') {
+    // In development, use HTTP fetch
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+    const res = await fetch(`${apiUrl}/api/trends`);
+    if (!res.ok) throw new Error('Failed to fetch trends');
+    return res.json();
+  } else {
+    // In production, call the handler directly
+    const response = await GET(new Request('http://localhost:3000/api/trends'));
+    const data = await response.json();
+    return data;
+  }
 }
 
 // Main component
