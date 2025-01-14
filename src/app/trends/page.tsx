@@ -115,7 +115,8 @@ const FutureTrendsList = ({ trends }: { trends: string[] }) => (
 
 // Data fetching function
 async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> {
-  const res = await fetch('/api/trends');
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+  const res = await fetch(`${apiUrl}/api/trends`);
   if (!res.ok) throw new Error('Failed to fetch trends');
   return res.json();
 }
