@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import FirecrawlApp from "@mendable/firecrawl-js";
 import { put, list, del } from '@vercel/blob';
 import { z } from "zod";
+import { SUBREDDITS } from '@/app/config/subreddits';
 
 // Define the schema for trend data
 const linkSchema = z.object({
@@ -18,21 +19,6 @@ const linkSchema = z.object({
 const schema = z.object({
   links: z.array(linkSchema)
 });
-
-const CATEGORIES = {
-  technology: {
-    url: "https://redlib.catsarch.com/r/technology/top?t=day",
-    name: "Technology"
-  },
-  cryptocurrency: {
-    url: "https://redlib.catsarch.com/r/cryptocurrency/top?t=day",
-    name: "Cryptocurrency"
-  },
-  finance: {
-    url: "https://redlib.catsarch.com/r/wallstreetbets/top?t=day",
-    name: "Finance"
-  }
-};
 
 const SYSTEM_PROMPT = `For each link, generate a linkId by taking the first 6 characters of the title (lowercase, alphanumeric only) plus a random 2-digit number. For example "nvidia announces" might become "nvidia23". Also extract the linkHref from the post's URL if available.
 
@@ -58,176 +44,192 @@ async function retryOperation<T>(operation: () => Promise<T>, maxRetries: number
   throw lastError;
 }
 
-const SIX_HOURS = 6 * 60 * 60 * 1000;
+const THREE_DAYS = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
 export const maxDuration = 60;
-export async function POST() {
+
+// Helper function to process a single subreddit
+async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[keyof typeof SUBREDDITS]) {
+  console.log(`Processing subreddit "${subredditKey}"`);
+  
+  const { blobs } = await list();
+  const linksBlob = blobs.find(blob => blob.pathname === `links-${subredditKey}.json`);
+  const trendsBlob = blobs.find(blob => blob.pathname === `trends-${subredditKey}.json`);
+
+  // Check if we have recent data
+  if (linksBlob && trendsBlob) {
+    const linksResponse = await fetch(linksBlob.url);
+    const trendsResponse = await fetch(trendsBlob.url);
+    const linksData = await linksResponse.json();
+    const trendsData = await trendsResponse.json();
+    
+    const linksUpdateTime = new Date(linksData.timestamp);
+    const trendsUpdateTime = new Date(trendsData.timestamp);
+    const threeDaysAgo = new Date(Date.now() - THREE_DAYS);
+    
+    if (linksUpdateTime > threeDaysAgo && trendsUpdateTime > threeDaysAgo) {
+      console.log(`Skipping ${subredditKey} - last update was less than 3 days ago`);
+      return trendsData;
+    }
+  }
+
+  // Initialize Firecrawl
+  const app = new FirecrawlApp({
+    apiKey: process.env.FIRECRAWL_API_KEY || ''
+  });
+
+  console.log(`Scraping ${config.url}`);
+  
   try {
-    // Process each category
-    await Promise.all(
-      Object.entries(CATEGORIES).map(async ([category, config]) => {
-        console.log(`Processing category "${category}"`);
-        
-        const { blobs } = await list();
-        const linksBlob = blobs.find(blob => blob.pathname === `links-${category}.json`);
-        const trendsBlob = blobs.find(blob => blob.pathname === `trends-${category.toLowerCase()}.json`);
-
-        // Check if we have recent data
-        if (linksBlob && trendsBlob) {
-          const linksResponse = await fetch(linksBlob.url);
-          const trendsResponse = await fetch(trendsBlob.url);
-          const linksData = await linksResponse.json();
-          const trendsData = await trendsResponse.json();
-          
-          const linksUpdateTime = new Date(linksData.timestamp);
-          const trendsUpdateTime = new Date(trendsData.timestamp);
-          const sixHoursAgo = new Date(Date.now() - SIX_HOURS);
-          
-          if (linksUpdateTime > sixHoursAgo && trendsUpdateTime > sixHoursAgo) {
-            console.log(`Skipping ${category} - last update was less than 6 hours ago`);
-            return trendsData;
-          }
+    // Try scraping with retry logic
+    const scrapeResult = await retryOperation(async () => {
+      return await app.scrapeUrl(config.url, {
+        formats: ["extract"],
+        extract: { 
+          schema: schema,
+          systemPrompt: SYSTEM_PROMPT
         }
+      });
+    });
 
-        // Initialize Firecrawl
-        const app = new FirecrawlApp({
-          apiKey: process.env.FIRECRAWL_API_KEY || ''
-        });
+    if (!scrapeResult.success) {
+      throw new Error(`Failed to scrape ${subredditKey}: ${scrapeResult.error}`);
+    }
 
-        console.log(`Scraping ${config.url}`);
-        
-        try {
-          // Try scraping with retry logic
-          const scrapeResult = await retryOperation(async () => {
-            return await app.scrapeUrl(config.url, {
-              formats: ["extract"],
-              extract: { 
-                schema: schema,
-                systemPrompt: SYSTEM_PROMPT
-              }
-            });
-          });
+    const blobData = {
+      timestamp: new Date().toISOString(),
+      category: config.name,
+      linksData: scrapeResult.extract?.links || []
+    };
 
-          if (!scrapeResult.success) {
-            throw new Error(`Failed to scrape ${category}: ${scrapeResult.error}`);
-          }
+    // Delete old blob if exists
+    if (linksBlob) {
+      await del(linksBlob.url);
+    }
 
-          const blobData = {
-            timestamp: new Date().toISOString(),
-            category: config.name,
-            linksData: scrapeResult.extract?.links || []
-          };
+    await put(`links-${subredditKey}.json`, JSON.stringify(blobData), {
+      access: 'public',
+      contentType: 'application/json'
+    });
 
-          // Delete old blob if exists
-          if (linksBlob) {
-            await del(linksBlob.url);
-          }
+    console.log(`Successfully processed ${subredditKey}`);
 
-          await put(`links-${category}.json`, JSON.stringify(blobData), {
-            access: 'public',
-            contentType: 'application/json'
-          });
+    const linksForLLM = blobData.linksData.slice(0, 10).map(link => ({
+      title: link.title,
+      linkId: link.linkId,
+      number_of_upvotes: link.number_of_upvotes,
+      number_of_comments: link.number_of_comments,
+    }));
 
-          console.log(`Successfully processed ${category}`);
+    // Process with Claude
+    const trends = await retryOperation(async () => {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY || '',
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-3-5-sonnet-20241022',
+          messages: [{
+            role: 'user',
+            content: `Analyze these ${config.name} news links and identify key trends. Return an array of trend objects that exactly match this TypeScript type:
 
-          const linksForLLM = blobData.linksData.slice(0, 10).map(link => ({
-            title: link.title,
-            linkHref: link.linkHref,
-            linkId: link.linkId,
-            number_of_upvotes: link.number_of_upvotes,
-            number_of_comments: link.number_of_comments,
-          }));
-
-          // Process with Claude
-          const trends = await retryOperation(async () => {
-            const response = await fetch('https://api.anthropic.com/v1/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-                'anthropic-version': '2023-06-01'
-              },
-              body: JSON.stringify({
-                model: 'claude-3-5-sonnet-20241022',
-                messages: [{
-                  role: 'user',
-                  content: `Analyze these tech news links and identify key trends. Return an array of trend objects that exactly match this TypeScript type:
-
-                  type Trend = {
-                    trend_viral_score: string,
-                    trend_title: string,
-                    trend_sources: string[],
-                    trend_overview: string,
-                    trend_suggestions: string[]
-                  }
-
-                  For each trend:
-                  - trend_viral_score should be a number from 1-10 as a string, based on the combined upvotes, comments, and overall impact
-                  - trend_title should be a clear headline, telling about what the trend is
-                  - trend_sources should be an array of relevant article linkIds from the input that support this trend
-                  - trend_overview should be a short overview of the trend, describing what it is and why it is important
-                  - trend_suggestions should be an array of 3 detailed content suggestions. Each suggestion should be multiple paragraphs describing what content can be created, viral hooks to use, and narratives for Twitter threads. Give plenty of detail for each with multpile examples, viral hook suggestions, title suggestions, narratives, etc. Make it prose style and detailed, not bullet points they are confusing. Explain reasoning for your suggestions as well, convincing the user why this angle works. Ensure that each suggestion tackles the issue from a different angle. This is the most important thing, so it should be EXTENSIVE. Use HTML <b> or <i> to place emphasis where needed. Ensure that each item in suggestions starts with a title, explains WHY this suggestion works, and then explains the suggestion. Ensure each suggestion is multiple paragraphs separated by <br>. Ensure that the title is contained with an <h3>.
-
-                  REPLY STRICTLY WITH THE JOSN AND NOTHING ELSE, OR I WILL LOSE MY JOB.
-
-                  Here are the links to analyze:
-                  ${JSON.stringify(linksForLLM, null, 2)}`
-                }],
-                max_tokens: 4096
-              })
-            });
-
-            const claudeResponse = await response.json();
-            
-            if (!claudeResponse.content || !claudeResponse.content[0]?.text) {
-              console.error('Invalid response from Claude:', claudeResponse);
-              throw new Error('Invalid response from Claude');
+            type Trend = {
+              trend_viral_score: string,
+              trend_title: string,
+              trend_sources: string[],
+              trend_overview: string,
+              trend_suggestions: string[]
             }
 
-            const claudeResponseText = claudeResponse.content[0].text;
-            return JSON.parse(claudeResponseText)?.trends;
-          });
+            For each trend:
+            - trend_viral_score should be a number from 1-10 as a string, based on the combined upvotes, comments, and overall impact
+            - trend_title should be a clear headline, telling about what the trend is
+            - trend_sources should be an array of relevant article linkIds from the input that support this trend
+            - trend_overview should be a short overview of the trend, describing what it is and why it is important
+            - trend_suggestions should be an array of 3 detailed content suggestions. Each suggestion should be multiple paragraphs describing what content can be created, viral hooks to use, and narratives for Twitter threads. Give plenty of detail for each with multpile examples, viral hook suggestions, title suggestions, narratives, etc. Make it prose style and detailed, not bullet points they are confusing. Explain reasoning for your suggestions as well, convincing the user why this angle works. Ensure that each suggestion tackles the issue from a different angle. This is the most important thing, so it should be EXTENSIVE. Use HTML <b> or <i> to place emphasis where needed. Ensure that each item in suggestions starts with a title, explains WHY this suggestion works, and then explains the suggestion. Ensure each suggestion is multiple paragraphs separated by <br>. Ensure that the title is contained with an <h3>.
 
-          const trendData = {
-            timestamp: new Date().toISOString(),
-            category: config.name,
-            results: {
-              trends,
-              linksData: blobData.linksData
-            }
-          };
+            REPLY STRICTLY WITH THE JOSN AND NOTHING ELSE, OR I WILL LOSE MY JOB.
 
-          // Delete old trends blob if exists
-          if (trendsBlob) {
-            await del(trendsBlob.url);
-          }
+            Here are the links to analyze:
+            ${JSON.stringify(linksForLLM, null, 2)}`
+          }],
+          max_tokens: 4096
+        })
+      });
 
-          await put(`trends-${category.toLowerCase()}.json`, JSON.stringify(trendData), {
-            access: 'public',
-            contentType: 'application/json'
-          });
+      const claudeResponse = await response.json();
+      
+      if (!claudeResponse.content || !claudeResponse.content[0]?.text) {
+        console.error('Invalid response from Claude:', claudeResponse);
+        throw new Error('Invalid response from Claude');
+      }
 
-          console.log(`Successfully saved trends for ${category}`);
-          return trendData;
+      const claudeResponseText = claudeResponse.content[0].text;
+      return JSON.parse(claudeResponseText)?.trends;
+    });
 
-        } catch (error) {
-          console.error(`Failed to process ${category}:`, error);
-          
-          // Use existing data as fallback if available
-          if (trendsBlob) {
-            console.log(`Using last good data for ${category}`);
-            const response = await fetch(trendsBlob.url);
-            return await response.json();
-          }
-          
-          return null;
-        }
-      })
-    );
+    const trendData = {
+      timestamp: new Date().toISOString(),
+      category: config.name,
+      results: {
+        trends,
+        linksData: blobData.linksData
+      }
+    };
+
+    // Delete old trends blob if exists
+    if (trendsBlob) {
+      await del(trendsBlob.url);
+    }
+
+    await put(`trends-${subredditKey}.json`, JSON.stringify(trendData), {
+      access: 'public',
+      contentType: 'application/json'
+    });
+
+    console.log(`Successfully saved trends for ${subredditKey}`);
+    return trendData;
+
+  } catch (error) {
+    console.error(`Failed to process ${subredditKey}:`, error);
+    
+    // Use existing data as fallback if available
+    if (trendsBlob) {
+      console.log(`Using last good data for ${subredditKey}`);
+      const response = await fetch(trendsBlob.url);
+      return await response.json();
+    }
+    
+    return null;
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const { subreddit } = await request.json();
+
+    if (!subreddit || !SUBREDDITS[subreddit]) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid subreddit' },
+        { status: 400 }
+      );
+    }
+
+    const result = await processSubreddit(subreddit, SUBREDDITS[subreddit]);
+
+    if (!result) {
+      return NextResponse.json(
+        { success: false, error: 'Failed to process subreddit' },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ 
       success: true, 
-      message: 'All categories processed successfully'
+      data: result
     });
 
   } catch (error) {
