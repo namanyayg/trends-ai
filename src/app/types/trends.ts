@@ -13,16 +13,15 @@ export type Trend = {
   trend_viral_score: string;
   trend_title: string;
   trend_sources: string[];
-  trend_hooks: string[];
-  trend_narratives: string[];
+  trend_overview: string;
+  trend_suggestions: string[];
 };
 
 export type TrendsData = {
   timestamp: string;
   category: string;
   results: {
-    links: Link[];
     trends: Trend[];
-    future_trends: string[];
+    linksData: Link[];
   };
 }; 

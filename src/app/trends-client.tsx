@@ -1,7 +1,5 @@
 'use client';
 
-import { useState } from 'react';
-
 // Types for our data
 type Link = {
   title: string;
@@ -18,17 +16,16 @@ type Trend = {
   trend_viral_score: string;
   trend_title: string;
   trend_sources: string[];
-  trend_hooks: string[];
-  trend_narratives: string[];
+  trend_overview: string;
+  trend_suggestions: string[];
 };
 
 type TrendsData = {
   timestamp: string;
   category: string;
   results: {
-    links: Link[];
     trends: Trend[];
-    future_trends: string[];
+    linksData: Link[];
   };
 };
 
@@ -54,40 +51,6 @@ const CATEGORY_CONFIG = {
   }
 };
 
-// Modular components
-const LinkCard = ({ link, categoryConfig }: { link: Link; categoryConfig: typeof CATEGORY_CONFIG[keyof typeof CATEGORY_CONFIG] }) => (
-  <div className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-all border border-gray-100">
-    <h3 className="text-xl font-semibold mb-2 text-gray-800">
-      {link.linkHref ? (
-        <a href={link.linkHref} target="_blank" rel="noopener noreferrer" className="hover:text-blue-600 transition-colors">
-          {link.title}
-        </a>
-      ) : (
-        link.title
-      )}
-    </h3>
-    <div className="flex gap-4 text-gray-600 mb-3">
-      <span className="flex items-center gap-1">⬆️ {link.number_of_upvotes.toLocaleString()}</span>
-      <span className="flex items-center gap-1">💬 {link.number_of_comments.toLocaleString()}</span>
-      <span className="flex items-center gap-1">🌐 {link.website_domain}</span>
-    </div>
-    <div className="flex flex-wrap gap-2 mb-3">
-      {link.topics.map((topic) => (
-        <span key={topic} className={`px-3 py-1 ${categoryConfig.accentLight} rounded-full text-sm font-medium`}>
-          {topic}
-        </span>
-      ))}
-    </div>
-    <div className="flex flex-wrap gap-2">
-      {link.companies_mentioned.map((company) => (
-        <span key={company} className="px-3 py-1 bg-gray-50 text-gray-600 rounded-full text-sm font-medium">
-          {company}
-        </span>
-      ))}
-    </div>
-  </div>
-);
-
 const TrendCard = ({ 
   trend, 
   categoryConfig, 
@@ -103,118 +66,121 @@ const TrendCard = ({
     return link || null;
   };
 
+  if (!trend) return null;
+  if (!trend.trend_suggestions) return null;
+
   return (
-    <div className="bg-white rounded-xl p-4 sm:p-8 shadow-lg hover:shadow-xl transition-all border border-gray-100 overflow-hidden">
+    <div className="bg-white rounded-xl p-6 sm:p-8 shadow-lg hover:shadow-xl transition-all border border-gray-100 overflow-hidden">
+      {/* Header with Title and Score */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-6">
-        <h3 className="text-xl sm:text-2xl font-bold text-gray-800 break-words">{trend.trend_title}</h3>
-        {trend.trend_viral_score && <span className={`shrink-0 px-4 py-2 ${categoryConfig.accentLight} font-semibold rounded-lg`}>
-          Score:&nbsp;{trend.trend_viral_score}/10
-        </span>}
+        <h3 className="text-xl sm:text-2xl font-bold text-gray-800 break-words leading-tight">
+          {trend.trend_title}
+        </h3>
+        {trend.trend_viral_score && (
+          <div className={`shrink-0 px-4 py-2 ${categoryConfig.accentLight} font-semibold rounded-lg flex items-center gap-2`}>
+            <span className="text-lg">🔥</span>
+            <span>Score: {trend.trend_viral_score}/10</span>
+          </div>
+        )}
       </div>
       
-      <div className="space-y-6">
-        <div>
-          <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
-            📝 Narratives
-          </h4>
-          <div className="space-y-3">
-            {trend.trend_narratives.map((narrative, i) => (
-              <p key={i} className="text-gray-600 leading-relaxed break-words">
-                {narrative}
-              </p>
-            ))}
-          </div>
+      {/* Overview Section */}
+      <div className="mb-8">
+        <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
+          <span>📊</span> Overview
+        </h4>
+        <p className="text-gray-600 leading-relaxed">
+          {trend.trend_overview}
+        </p>
+      </div>
+      
+      {/* Content Suggestions Section */}
+      <div>
+        <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
+          <span>💡</span> Content Ideas
+        </h4>
+        <div className="space-y-4">
+          {trend.trend_suggestions.map((suggestion, i) => (
+            <div 
+              key={i} 
+              className={`p-4 rounded-lg ${categoryConfig.accentLight} bg-opacity-50`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="mr-2 flex items-center justify-center text-sm font-medium">
+                  {i + 1}
+                </div>
+                <p className="whitespace-pre-line text-gray-700" dangerouslySetInnerHTML={{ __html: suggestion }} />
+              </div>
+            </div>
+          ))}
         </div>
+      </div>
 
-        <div>
-          <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
-            🎯 Viral Hooks
-          </h4>
-          <div className="space-y-3">
-            {trend.trend_hooks.map((hook, i) => (
-              <p key={i} className={`${categoryConfig.accentLight} p-4 rounded-lg break-words`}>
-                {hook}
-              </p>
-            ))}
-          </div>
-        </div>
-        
-        <div>
-          <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
-            🔗 Sources
-          </h4>
-          <div className="space-y-2">
-            {trend.trend_sources.map((sourceId, i) => {
-              const link = getLinkDetails(sourceId);
-              if (!link) return null;
-              return (
-                <span
-                  key={i}
-                  className="flex items-center gap-2 text-gray-500 group break-words"
-                >
-                  {link.linkHref ? (
-                    <a href={link.linkHref} target="_blank" rel="noopener noreferrer" className="break-all hover:text-blue-600 transition-colors">
-                      {link.title}
-                    </a>
-                  ) : (
-                    <span className="break-all">{link.title}</span>
-                  )}
-                </span>
-              );
-            })}
-          </div>
+      {/* Sources Section */}
+      <div className="my-8">
+        <h4 className="text-lg font-semibold mb-3 text-gray-800 flex items-center gap-2">
+          <span>🔗</span> Source Articles
+        </h4>
+        <div className="space-y-3">
+          {trend.trend_sources.map((sourceId, i) => {
+            const link = getLinkDetails(sourceId);
+            if (!link) return null;
+            return (
+              <div
+                key={i}
+                className="group"
+              >
+                {link.linkHref ? (
+                  <a 
+                    href={link.linkHref} 
+                    target="_blank" 
+                    rel="noopener noreferrer" 
+                    className="block p-3 rounded-lg border border-gray-100 hover:border-gray-200 transition-all"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div>
+                        <h5 className="font-medium text-gray-800 group-hover:text-blue-600 transition-colors">
+                          {link.title}
+                        </h5>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <span className="text-sm text-gray-500">
+                            ⬆️ {link.number_of_upvotes.toLocaleString()}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            💬 {link.number_of_comments.toLocaleString()}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            🌐 {link.website_domain}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </a>
+                ) : (
+                  <div className="p-3 rounded-lg border border-gray-100">
+                    <div className="flex items-start gap-3">
+                      <div>
+                        <h5 className="font-medium text-gray-800">{link.title}</h5>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          <span className="text-sm text-gray-500">
+                            ⬆️ {link.number_of_upvotes.toLocaleString()}
+                          </span>
+                          <span className="text-sm text-gray-500">
+                            💬 {link.number_of_comments.toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
   );
 };
-
-const FutureTrendsList = ({ trends, categoryConfig }: { trends: string[]; categoryConfig: typeof CATEGORY_CONFIG[keyof typeof CATEGORY_CONFIG] }) => (
-  <div className="my-12">
-    <h2 className="text-3xl font-bold mb-6 text-gray-800 flex items-center gap-3">
-      🔮 Future Trends
-    </h2>
-    <div className={`bg-gradient-to-br ${categoryConfig.gradient} rounded-xl p-8 shadow-lg text-white`}>
-      {trends.map((trend, i) => (
-        <div key={i} className="flex items-center gap-4 mb-4 last:mb-0">
-          <span>✓</span>
-          <p className="text-lg">{trend}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-);
-
-// Category tabs component
-const CategoryTabs = ({ 
-  categories, 
-  activeCategory, 
-  onCategoryChange 
-}: { 
-  categories: { name: string; data: TrendsData }[];
-  activeCategory: string;
-  onCategoryChange: (category: string) => void;
-}) => (
-  <div className="flex gap-2 overflow-x-auto pb-2">
-    {categories.map(({ name }) => {
-      const config = CATEGORY_CONFIG[name as keyof typeof CATEGORY_CONFIG];
-      return (
-        <button
-          key={name}
-          onClick={() => onCategoryChange(name)}
-          className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-            activeCategory === name
-              ? `${config.accentDark}`
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <span>{config.icon}</span>
-          <span>{name}</span>
-        </button>
-      );
-    })}
-  </div>
-);
 
 // Main client component
 export function TrendsClient({ trendsData }: { trendsData: TrendsData[] }) {
@@ -225,92 +191,54 @@ export function TrendsClient({ trendsData }: { trendsData: TrendsData[] }) {
       if (b.category === "Technology") return 1;
       return a.category.localeCompare(b.category);
     })
-    .map(data => ({
+    .map((data, index) => ({
       name: data.category,
-      data: data
+      data: data,
+      id: `${data.category.toLowerCase()}-${index}`
     })) : [];
 
-  const [activeCategory, setActiveCategory] = useState(sortedCategories[0]?.name || '');
-
   if (!trendsData || trendsData.length === 0) {
-    return <div>No data available</div>;
-  }
-
-  const activeData = sortedCategories.find(cat => cat.name === activeCategory)?.data;
-  const activeCategoryConfig = CATEGORY_CONFIG[activeCategory as keyof typeof CATEGORY_CONFIG];
-
-  if (!activeData || !activeCategoryConfig) {
     return <div>No data available</div>;
   }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-white text-gray-800">
       {/* Hero Section */}
-      <div className={`bg-gradient-to-br ${activeCategoryConfig.gradient} text-white`}>
-        <div className="text-center mx-auto px-4 sm:px-8 py-24 max-w-7xl">
+      <div>
+        <div className="text-center mx-auto px-4 sm:px-8 py-8 max-w-7xl">
           <div>
-            <h1 className="text-4xl sm:text-6xl font-bold mb-6 leading-tight">
+            <h1 className="text-3xl sm:text-4xl font-bold mb-6 leading-tight">
               Trends AI
             </h1>
-            <h2 className="text-xl sm:text-2xl opacity-90 mb-8">
-              Find viral {activeCategory.toLowerCase()} topics in 30 seconds, not 3 hours
+            <h2 className="text-xl sm:text-2xl opacity-90">
+              Find viral topics in 30 seconds, not 3 hours
             </h2>
           </div>
         </div>
       </div>
 
       {/* Content Section */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-8 py-16">
-        <div className="grid gap-8 sm:gap-16">
-          {/* Category Tabs */}
-          <div className="flex justify-center">
-            <CategoryTabs 
-              categories={sortedCategories}
-              activeCategory={activeCategory}
-              onCategoryChange={setActiveCategory}
-            />
-          </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-8 pb-16">
+        <div className="grid gap-16">
+          {sortedCategories.map(category => {
+            const categoryConfig = CATEGORY_CONFIG[category.name as keyof typeof CATEGORY_CONFIG];
+            if (!categoryConfig) return null;
 
-          {/* Trending Topics Section */}
-          <section>
-            <h2 className="text-3xl text-center font-bold mb-8 text-gray-800">
-              {activeCategoryConfig.icon} {activeData.category} Trending Topics
-            </h2>
-            <div className="grid gap-8 lg:grid-cols-2">
-              {activeData.results.trends.map((trend: Trend) => (
-                <TrendCard 
-                  key={trend.trend_title} 
-                  trend={trend} 
-                  categoryConfig={activeCategoryConfig}
-                  links={activeData.results.links}
-                />
-              ))}
-            </div>
-          </section>
-
-          {/* Future Trends Section */}
-          {activeData.results.future_trends.length > 0 && <section>
-            <FutureTrendsList 
-              trends={activeData.results.future_trends} 
-              categoryConfig={activeCategoryConfig}
-              />
-            </section>}
-
-          {/* Popular Links Section */}
-          <section>
-            <h2 className="text-3xl font-bold mb-8 text-gray-800 flex items-center gap-3">
-              {activeCategoryConfig.icon} {activeData.category} Popular Stories
-            </h2>
-            <div className="grid gap-8 lg:grid-cols-2">
-              {activeData.results.links.map((link: Link) => (
-                <LinkCard 
-                  key={link.title} 
-                  link={link} 
-                  categoryConfig={activeCategoryConfig}
-                />
-              ))}
-            </div>
-          </section>
+            return (
+              <section key={category.id}>
+                <div className="grid gap-8">
+                  {(category.data.results?.trends || []).map((trend: Trend) => (
+                    <TrendCard 
+                      key={`${category.id}-${trend.trend_title}`} 
+                      trend={trend} 
+                      categoryConfig={categoryConfig}
+                      links={category.data.results?.linksData || []}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </div>
       </div>
     </div>
