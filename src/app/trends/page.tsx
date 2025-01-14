@@ -124,7 +124,7 @@ async function getTrendsData(): Promise<{ success: boolean; data: TrendsData }> 
     return res.json();
   } else {
     // In production, call the handler directly
-    const response = await GET(new Request('/api/trends'));
+    const response = await GET(new Request('http://localhost:3000/api/trends'));
     const data = await response.json();
     return data;
   }
