@@ -85,6 +85,9 @@ const TrendCard = ({
   subredditConfig: SubredditConfig;
   links: Link[];
 }) => {
+  const [expandedSuggestions, setExpandedSuggestions] = useState<{[key: number]: boolean}>({});
+  const [showSources, setShowSources] = useState(false);
+
   // Process suggestions to extract title and subtitle
   const processedSuggestions = (trend.trend_suggestions || []).map(suggestion => {
     // Split on <br> or <br/> tags
@@ -134,22 +137,34 @@ const TrendCard = ({
 
           <div className="space-y-4">
             {processedSuggestions.map((suggestion, index) => (
-              <div key={index} className={`p-6 rounded-lg ${subredditConfig.color.accentLight}`}>
-                {/* Title */}
-                <div 
-                  className="text-lg font-semibold text-gray-900 block"
-                  dangerouslySetInnerHTML={{ __html: suggestion.title }}
-                />
+              <div key={index} className={`p-6 rounded-lg bg-gray-50`}>
+                {/* Title and Toggle */}
+                <div className="flex items-center gap-4">
+                  <div 
+                    className="text-lg font-semibold text-gray-900 block"
+                    dangerouslySetInnerHTML={{ __html: suggestion.title }}
+                  />
+                  <button
+                    onClick={() => setExpandedSuggestions(prev => ({
+                      ...prev,
+                      [index]: !prev[index]
+                    }))}
+                    className="text-black/30 hover:text-black/40 transition-colors"
+                  >
+                    {expandedSuggestions[index] ? '▼' : '▶'}
+                  </button>
+                </div>
+
                 {/* Subtitle */}
                 <div 
                   className="text-base text-gray-600 block italic"
                   dangerouslySetInnerHTML={{ __html: suggestion.subtitle }}
                 />
 
-                {/* Remaining content */}
-                {suggestion.remaining && (
+                {/* Remaining content - only show if expanded */}
+                {expandedSuggestions[index] && suggestion.remaining && (
                   <div 
-                    className="text-gray-600 text-base [&>p]:mb-2"
+                    className="text-gray-600 text-base [&>p]:mb-2 mt-3"
                     dangerouslySetInnerHTML={{ __html: suggestion.remaining }}
                   />
                 )}
@@ -159,45 +174,52 @@ const TrendCard = ({
         </div>
 
         {/* Source Links */}
-        <div className="mt-6 pt-6 border-t border-gray-100">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🔗</span>
-            <h4 className="font-semibold text-gray-900">Source Articles</h4>
+        <div className="mt-6">
+          <div className="flex items-center my-2 gap-6">
+            <button
+              onClick={() => setShowSources(!showSources)}
+              className="flex items-center gap-2 text-black/30 hover:text-black/40 transition-colors text-sm"
+            >
+              <h4 className="font-semibold text-gray-900">Sources</h4>
+              <span>{showSources ? '▼' : '▶'}</span>
+            </button>
           </div>
 
-          <div className="space-y-4">
-            {trend.trend_sources.map(sourceId => {
-              const link = links.find(l => l.linkId === sourceId);
-              if (!link) return null;
+          {showSources && (
+            <div className="space-y-4">
+              {trend.trend_sources.map(sourceId => {
+                const link = links.find(l => l.linkId === sourceId);
+                if (!link) return null;
 
-              return (
-                <a
-                  key={sourceId}
-                  href={link.linkHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <h5 className="font-medium text-gray-900">{link.title}</h5>
-                    <div className="flex items-center gap-3 text-sm text-gray-500 whitespace-nowrap">
-                      <span>↑ {link.number_of_upvotes}</span>
-                      <span>💬 {link.number_of_comments}</span>
+                return (
+                  <a
+                    key={sourceId}
+                    href={link.linkHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block p-4 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-200"
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <h5 className="font-medium text-gray-900">{link.title}</h5>
+                      <div className="flex items-center gap-3 text-sm text-gray-500 whitespace-nowrap">
+                        <span>↑ {link.number_of_upvotes}</span>
+                        <span>💬 {link.number_of_comments}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
-                    <span>{link.website_domain}</span>
-                    {link.topics.length > 0 && (
-                      <>
-                        <span>•</span>
-                        <span>{link.topics.join(', ')}</span>
-                      </>
-                    )}
-                  </div>
-                </a>
-              );
-            })}
-          </div>
+                    <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
+                      <span>{link.website_domain}</span>
+                      {link.topics.length > 0 && (
+                        <>
+                          <span>•</span>
+                          <span>{link.topics.join(', ')}</span>
+                        </>
+                      )}
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -389,7 +411,7 @@ export function TrendsClient({ initialTrendsData }: { initialTrendsData?: Trends
       {/* Topic Selector */}
       <div className="max-w-7xl mx-auto px-4 sm:px-8 mb-8">
         <div className="space-y-9">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 text-base">
             {(() => {
               const categorySubreddits = getSubredditsByCategory(selectedCategory);
               const subredditEntries = Object.entries(categorySubreddits) as [string, SubredditConfig][];
@@ -403,7 +425,7 @@ export function TrendsClient({ initialTrendsData }: { initialTrendsData?: Trends
                     relative p-4 rounded-lg font-medium transition-all duration-200
                     ${selectedSubreddit === key 
                       ? config.color.accentDark
-                      : `${config.color.accentLight} hover:bg-opacity-90 hover:scale-105 hover:shadow-md`
+                      : `${config.color.accentLight} hover:bg-opacity-90 hover:scale-105 hover:shadow-sm`
                     }
                     flex items-center gap-3 justify-center
                     transform hover:translate-y-[-2px]
