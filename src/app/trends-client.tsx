@@ -157,14 +157,14 @@ const TrendCard = ({
 
                 {/* Subtitle */}
                 <div 
-                  className="text-base text-gray-600 block italic"
+                  className="text-base text-gray-600 block"
                   dangerouslySetInnerHTML={{ __html: suggestion.subtitle }}
                 />
 
                 {/* Remaining content - only show if expanded */}
                 {expandedSuggestions[index] && suggestion.remaining && (
                   <div 
-                    className="text-gray-600 text-base [&>p]:mb-2 mt-3"
+                    className="text-gray-600 text-base [&>p]:mb-2 mt-2"
                     dangerouslySetInnerHTML={{ __html: suggestion.remaining }}
                   />
                 )}

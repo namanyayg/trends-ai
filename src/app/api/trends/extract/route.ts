@@ -3,20 +3,11 @@ import FirecrawlApp from "@mendable/firecrawl-js";
 import { put, list, del } from '@vercel/blob';
 import { z } from "zod";
 import { SUBREDDITS } from '@/app/config/subreddits';
+import { invokeClaude } from '@/app/utils/bedrock';
+import { linkSchema, trendsResponseSchema } from '@/app/types/trends';
 
-// Define the schema for trend data
-const linkSchema = z.object({
-  linkId: z.string(),
-  title: z.string(),
-  number_of_upvotes: z.number(),
-  number_of_comments: z.number(),
-  website_domain: z.string(),
-  topics: z.array(z.string()),
-  companies_mentioned: z.array(z.string()),
-  linkHref: z.string()
-});
-
-const schema = z.object({
+// Define the schema for firecrawl extraction
+const extractionSchema = z.object({
   links: z.array(linkSchema)
 });
 
@@ -44,7 +35,7 @@ async function retryOperation<T>(operation: () => Promise<T>, maxRetries: number
   throw lastError;
 }
 
-const THREE_DAYS = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+const ONE_DAY = 24 * 60 * 60 * 1000; // 1 day in milliseconds
 
 export const maxDuration = 60;
 
@@ -65,10 +56,19 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
     
     const linksUpdateTime = new Date(linksData.timestamp);
     const trendsUpdateTime = new Date(trendsData.timestamp);
-    const threeDaysAgo = new Date(Date.now() - THREE_DAYS);
+    const oneDayAgo = new Date(Date.now() - ONE_DAY);
+
+    if (!trendsData.results || !trendsData.results.trends) {
+      console.log(`Trends data for ${subredditKey} is invalid, deleting and retrying...`);
+      await del(linksBlob.url);
+      await del(trendsBlob.url);
+      return await processSubreddit(subredditKey, config);
+    }
     
-    if (linksUpdateTime > threeDaysAgo && trendsUpdateTime > threeDaysAgo) {
-      console.log(`Skipping ${subredditKey} - last update was less than 3 days ago`);
+    if (linksUpdateTime > oneDayAgo && trendsUpdateTime > oneDayAgo) {
+      console.log(`Skipping ${subredditKey} - last update was less than 1 day ago`);
+      console.log("Trend data:")
+      console.log(JSON.stringify(trendsData, null, 2));
       return trendsData;
     }
   }
@@ -86,7 +86,7 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
       return await app.scrapeUrl(config.url, {
         formats: ["extract"],
         extract: { 
-          schema: schema,
+          schema: extractionSchema,
           systemPrompt: SYSTEM_PROMPT
         }
       });
@@ -121,56 +121,50 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
       number_of_comments: link.number_of_comments,
     }));
 
-    // Process with Claude
+    // Process with Claude via AWS Bedrock
     const trends = await retryOperation(async () => {
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.ANTHROPIC_API_KEY || '',
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: 'claude-3-5-sonnet-20241022',
-          messages: [{
-            role: 'user',
-            content: `Analyze these ${config.name} news links and identify key trends. Return an array of trend objects that exactly match this TypeScript type:
+      const prompt = `Analyze these ${config.name} news links and identify top 3 key trends. Return an array of trend objects that exactly match this TypeScript type:
 
-            type Trend = {
-              trend_viral_score: string,
-              trend_title: string,
-              trend_sources: string[],
-              trend_overview: string,
-              trend_suggestions: string[]
-            }
-
-            For each trend:
-            - trend_viral_score should be a number from 1-10 as a string, based on the combined upvotes, comments, and overall impact
-            - trend_title should be a clear headline, telling about what the trend is
-            - trend_sources should be an array of relevant article linkIds from the input that support this trend
-            - trend_overview should be a short overview of the trend, describing what it is and why it is important
-            - trend_suggestions should be an array of 3 detailed content suggestions. Each suggestion should be multiple paragraphs describing what content can be created, viral hooks to use, and narratives for Twitter threads. Give plenty of detail for each with multpile examples, viral hook suggestions, title suggestions, narratives, etc. Make it prose style and detailed, not bullet points they are confusing. Explain reasoning for your suggestions as well, convincing the user why this angle works. Ensure that each suggestion tackles the issue from a different angle. This is the most important thing, so it should be EXTENSIVE. Use HTML <b> or <i> to place emphasis where needed. Ensure that each item in suggestions starts with a title, explains WHY this suggestion works, and then explains the suggestion. Ensure each suggestion is multiple paragraphs separated by <br>. Ensure that the title is contained with an <h3>.
-
-            REPLY STRICTLY WITH THE JOSN AND NOTHING ELSE, OR I WILL LOSE MY JOB.
-
-            Here are the links to analyze:
-            ${JSON.stringify(linksForLLM, null, 2)}`
-          }],
-          max_tokens: 4096
-        })
-      });
-
-      const claudeResponse = await response.json();
-      
-      if (!claudeResponse.content || !claudeResponse.content[0]?.text) {
-        console.error('Invalid response from Claude:', claudeResponse);
-        throw new Error('Invalid response from Claude');
+      type Trend = {
+        trend_viral_score: string,
+        trend_title: string,
+        trend_sources: string[],
+        trend_overview: string,
+        trend_suggestions: string[]
       }
 
-      const claudeResponseText = claudeResponse.content[0].text;
-      return JSON.parse(claudeResponseText)?.trends;
+      For each trend:
+      - trend_viral_score should be a number from 1-10 as a string, based on the combined upvotes, comments, and overall impact
+      - trend_title should be a clear headline, telling about what the trend is
+      - trend_sources should be an array of relevant article linkIds from the input that support this trend
+      - trend_overview should be a short overview of the trend, describing what it is and why it is important
+      - trend_suggestions should be an ARRAY of 3 detailed content suggestions. Each suggestion should be multiple paragraphs describing what content can be created, viral hooks to use, and narratives for Twitter threads. Give plenty of detail for each with multpile examples, viral hook suggestions, title suggestions, narratives, etc. Make it prose style and detailed, not bullet points they are confusing. Explain reasoning for your suggestions as well, convincing the user why this angle works. Ensure that each suggestion tackles the issue from a different angle. This is the most important thing, so it should be EXTENSIVE. Use HTML <b> or <i> to place emphasis where needed. Ensure that each item in suggestions starts with a title, explains WHY this suggestion works, and then explains the suggestion. Ensure each suggestion is multiple paragraphs separated by <br>. Ensure that the title is contained with an <h3>.
+
+      ENSURE NO NESTED QUOTES. OTHERWISE IT CAUSES FORMATTING ERRORS.
+      REPLY STRICTLY WITH EXACT JSON FORMATTING AND NOTHING ELSE, OR I WILL LOSE MY JOB.
+
+      Here are the links to analyze:
+      ${JSON.stringify(linksForLLM, null, 2)}`;
+
+      const response = await invokeClaude(prompt);
+      if (response?.trends) {
+        return response.trends;
+      } else {
+        return response;
+      }
     });
 
+    if (!trends) {
+      throw new Error("No trends found in response");
+    }
+    
+    // Validate trends match our schema
+    const validationResult = trendsResponseSchema.safeParse(trends);
+    if (!validationResult.success) {
+      console.error('Invalid trends format:', validationResult.error);
+      throw new Error('Claude output does not match expected Trend type format');
+    }
+    
     const trendData = {
       timestamp: new Date().toISOString(),
       category: config.name,
@@ -179,6 +173,9 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
         linksData: blobData.linksData
       }
     };
+
+    console.log("Trend data:")
+    console.log(JSON.stringify(trendData, null, 2));
 
     // Delete old trends blob if exists
     if (trendsBlob) {
