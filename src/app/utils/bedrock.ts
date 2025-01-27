@@ -58,7 +58,10 @@ export async function invokeClaude(prompt: string): Promise<TrendsResponse> {
     console.log("Claude response:")
     console.log(responseBody.content[0].text);
 
-    return JSON.parse(responseBody.content[0].text) as TrendsResponse;
+    // escape nested quotes
+    const sanitizedText = responseBody.content[0].text.replace(/\\\"/g, '\\\\"');
+
+    return JSON.parse(sanitizedText) as TrendsResponse;
   } catch (error) {
     console.error('Error invoking Claude via Bedrock:', error);
     throw error;

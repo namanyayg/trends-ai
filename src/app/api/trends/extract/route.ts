@@ -143,6 +143,8 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
       ENSURE NO NESTED QUOTES. OTHERWISE IT CAUSES FORMATTING ERRORS.
       REPLY STRICTLY WITH EXACT JSON FORMATTING AND NOTHING ELSE, OR I WILL LOSE MY JOB.
 
+      Always write BRIEFLY, SUCCINCTLY, and CONCISELY. Be TO THE POINT.
+
       Here are the links to analyze:
       ${JSON.stringify(linksForLLM, null, 2)}`;
 
