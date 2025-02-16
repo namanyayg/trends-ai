@@ -29,7 +29,7 @@ type TrendsResponse = {
 
 export async function invokeClaude(prompt: string): Promise<TrendsResponse> {
   const input = {
-    modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
+    modelId: "anthropic.claude-3-5-sonnet-20241022-v2:0",
     contentType: "application/json",
     accept: "application/json",
     body: JSON.stringify({
