@@ -35,7 +35,7 @@ async function retryOperation<T>(operation: () => Promise<T>, maxRetries: number
   throw lastError;
 }
 
-const ONE_DAY = 24 * 60 * 60 * 1000; // 1 day in milliseconds
+const THREE_DAYS = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
 export const maxDuration = 60;
 
@@ -56,7 +56,7 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
     
     const linksUpdateTime = new Date(linksData.timestamp);
     const trendsUpdateTime = new Date(trendsData.timestamp);
-    const oneDayAgo = new Date(Date.now() - ONE_DAY);
+    const threeDaysAgo = new Date(Date.now() - THREE_DAYS);
 
     if (!trendsData.results || !trendsData.results.trends) {
       console.log(`Trends data for ${subredditKey} is invalid, deleting and retrying...`);
@@ -65,8 +65,8 @@ async function processSubreddit(subredditKey: string, config: typeof SUBREDDITS[
       return await processSubreddit(subredditKey, config);
     }
     
-    if (linksUpdateTime > oneDayAgo && trendsUpdateTime > oneDayAgo) {
-      console.log(`Skipping ${subredditKey} - last update was less than 1 day ago`);
+    if (linksUpdateTime > threeDaysAgo && trendsUpdateTime > threeDaysAgo) {
+      console.log(`Skipping ${subredditKey} - last update was less than 3 days ago`);
       console.log("Trend data:")
       console.log(JSON.stringify(trendsData, null, 2));
       return trendsData;
